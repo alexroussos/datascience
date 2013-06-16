@@ -25,7 +25,7 @@ process <- function(charvec, minOccurs) {
   corpus <- tm_map(corpus, removeNumbers)
   # TODO experiment with not using stopwords -- could be interesting to see if spam uses them 
   #    at a different frequency (bc maybe uses more shorthand?)
-  #corpus <- tm_map(corpus, removeWords, stopwords('english'))
+  corpus <- tm_map(corpus, removeWords, stopwords('english'))
   
   # stemming is annoying; omitting for now
   counts <- rowSums(as.matrix(TermDocumentMatrix(corpus)))
