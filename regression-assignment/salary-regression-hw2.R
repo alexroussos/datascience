@@ -36,9 +36,6 @@ model <- lm(SalaryNormalized ~ ContractType:ContractTime, data.train)
 mae(predict(model, data.test), data.test$SalaryNormalized) # 11114.51
 summary(model) # R2 = 0.079
 
-# ONLY LM has r-squared - can approx - see https://stat.ethz.ch/pipermail/r-help/2010-June/243113.html
-#R2 <- cor(data.training$SalaryNormalized, predict(model))^2
-
 # See how well Category predicts salary
 # Too many Categories -- length(levels(data.train$Category)) = 28
 model <- lm(SalaryNormalized ~ Category, data.train)
@@ -85,16 +82,14 @@ model <- lm(SalaryNormalized ~ Category:ContractTime, data.train)
 mae(predict(model, data.test), data.test$SalaryNormalized) # 10291
 summary(model) # R2 = 0.221
 
+# TODO look at whether Title contains words like "Senior" or "Manager"
+
 ##########################################################################################
 # PART 3: Try DAAG for cross-validation
 ##########################################################################################
 
 library('DAAG')
-
-data$TopSource <- factor(data$Source, levels=top.sources)
-data$TopSource[is.na(data$TopSource)] <- "Other Source"
-
-result <- cv.lm(df=data, form.lm = formula(SalaryNormalized ~ Category + ContractTime), m=3) # plot: dots=FALSE, plotit=TRUE
+cv.lm(df=data, form.lm = formula(SalaryNormalized ~ Category + ContractTime), m=3) # plot: dots=FALSE, plotit=TRUE
 
 ##########################################################################################
 # PART 4: Merge Location_Tree.csv
@@ -124,3 +119,15 @@ read.csv('Location_Tree.csv')
 # PART 8: Use vowpal wabbit with largest set (***)
 ##########################################################################################
 
+##########################################################################################
+# FINAL: Process test set and export predictions
+##########################################################################################
+final.data.test <- read.csv("test.csv")
+final.data.train <- data.train # TODO read in larger training file
+levels(final.data.train$Category) <- c(levels(final.data.train$Category), "Part time Jobs")
+# TODO adding level isn't working, cheating by putting it into the training set
+final.data.train[nrow(final.data.train),]$Category <- "Part time Jobs"
+final.model <- lm(SalaryNormalized ~ Category:ContractTime, final.data.train)
+final.predictions <- predict(final.model, final.data.test)
+final.output <- data.frame(final.data.test$Id, Salary=final.predictions)
+write.csv(final.output, "my_predictions.csv", row.names=FALSE)
