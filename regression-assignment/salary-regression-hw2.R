@@ -9,7 +9,7 @@
 
 # Create training and test data sets
 # setwd('./ga-datascience/datascience_repo/regression-assignment/')
-data <- read.csv("train.csv") # TODO header=TRUE
+data <- read.csv("train.csv", header=TRUE)
 train.indices <- sample(1:nrow(data), 0.7 * nrow(data))
 data.train <- data[train.indices,]
 data.test <- data[-train.indices,]
@@ -124,14 +124,3 @@ read.csv('Location_Tree.csv')
 # PART 8: Use vowpal wabbit with largest set (***)
 ##########################################################################################
 
-
-
-# TODO cut useless columns a la 
-#     model_data <- data[, c('HR', 'RBI', 'R', 'G', 'height', 'weight', 'salary', 'yearID')]
-
-
-
-# TODO remove missing
-#    head(data[data$ContractType != "",])
-# TODO remove NAs
-#    model_data <- model_data[complete.cases(model_data),]
