@@ -43,8 +43,8 @@ mae(predict(model, data.test), data.test$SalaryNormalized) # 10335
 summary(model) # R2 = 0.1446
 # Create an aggregate category: WhiteCollar=(Accounting, Engineering, Legal, IT, Cosultancy)
 #TODO use function, pass list of job fields
-data.train$WhiteCollar <- grepl('IT', data.mini$Category) | grepl('Engineer', data.mini$Category) | grepl('Finance', data.mini$Category) | grepl('Legal', data.mini$Category) | grepl('Consult', data.mini$Category)
-data.test$WhiteCollar <- grepl('IT', data.mini$Category) | grepl('Engineer', data.mini$Category) | grepl('Finance', data.mini$Category) | grepl('Legal', data.mini$Category) | grepl('Consult', data.mini$Category)  
+data.train$WhiteCollar <- grepl('IT', data.train$Category) | grepl('Engineer', data.train$Category) | grepl('Finance', data.train$Category) | grepl('Legal', data.train$Category) | grepl('Consult', data.train$Category)
+data.test$WhiteCollar <- grepl('IT', data.test$Category) | grepl('Engineer', data.test$Category) | grepl('Finance', data.test$Category) | grepl('Legal', data.test$Category) | grepl('Consult', data.test$Category)  
 model <- lm(SalaryNormalized ~ WhiteCollar, data.train)
 mae(predict(model, data.test), data.test$SalaryNormalized) # 11933
 summary(model) # R2 = 2.31e-05
@@ -82,7 +82,12 @@ model <- lm(SalaryNormalized ~ Category:ContractTime, data.train)
 mae(predict(model, data.test), data.test$SalaryNormalized) # 10291
 summary(model) # R2 = 0.221
 
-# TODO look at whether Title contains words like "Senior" or "Manager"
+# Look at whether Title contains words like "Senior" or "Manager" or "Head"
+data.train$Manager <- grepl('Senior', data.train$Title, ignore.case=TRUE) | grepl('Head', data.train$Title,ignore.case=TRUE) | grepl('Manager', data.train$Title, ignore.case=TRUE)
+data.test$Manager <- grepl('Senior', data.test$Title, ignore.case=TRUE) | grepl('Head', data.test$Title,ignore.case=TRUE) | grepl('Manager', data.test$Title, ignore.case=TRUE)
+model <- lm(SalaryNormalized ~ Manager, data.train)
+mae(predict(model, data.test), data.test$SalaryNormalized) # 11128.17
+summary(model) # R2 = 0.057
 
 ##########################################################################################
 # PART 3: Try DAAG for cross-validation
@@ -124,10 +129,38 @@ read.csv('Location_Tree.csv')
 ##########################################################################################
 final.data.test <- read.csv("test.csv")
 final.data.train <- data.train # TODO read in larger training file
-levels(final.data.train$Category) <- c(levels(final.data.train$Category), "Part time Jobs")
-# TODO adding level isn't working, cheating by putting it into the training set
+
+# TODO adding these columns should be a function so it can be done with same code as above
+
+# Adding level isn't working, cheating by putting it into the training set
+# Why no work: levels(final.data.train$Category) <- c(levels(final.data.train$Category), "Part time Jobs")
 final.data.train[nrow(final.data.train),]$Category <- "Part time Jobs"
-final.model <- lm(SalaryNormalized ~ Category:ContractTime, final.data.train)
+final.data.train[nrow(final.data.train),]$Category <- "Graduate Jobs"
+
+# Top Sources
+final.sources.counts <- summary(final.data.train$SourceName)
+final.top.sources <- names(final.sources.counts[order(final.sources.counts, decreasing= TRUE)][1:10])
+final.data.train$TopSource <- factor(final.data.train$Source, levels=final.top.sources)
+final.data.train$TopSource[is.na(final.data.train$TopSource)] <- "Other"
+final.data.test$TopSource <- factor(final.data.test$Source, levels=final.top.sources)
+final.data.test$TopSource[is.na(final.data.test$TopSource)] <- "Other"
+
+# Top Locations
+final.locations.counts <- summary(final.data.train$LocationNormalized)
+final.top.locations <- names(final.locations.counts[order(final.locations.counts, decreasing= TRUE)][1:10])
+final.data.train$TopLocation <- factor(final.data.train$LocationNormalized, levels=final.top.locations)
+final.data.train$TopLocation[is.na(final.data.train$TopLocation)] <- "(Other)"
+final.data.train$TopLocation[final.data.train$TopLocation == "UK"] <- "(Other)"
+final.data.test$TopLocation <- factor(final.data.test$LocationNormalized, levels=final.top.locations)
+final.data.test$TopLocation[is.na(final.data.test$TopLocation)] <- "(Other)"
+final.data.test$TopLocation[final.data.test$TopLocation == "UK"] <- "(Other)"
+
+# Title contains words like "Senior" or "Manager" or "Head"
+final.data.train$Manager <- grepl('Senior', final.data.train$Title, ignore.case=TRUE) | grepl('Head', final.data.train$Title,ignore.case=TRUE) | grepl('Manager', final.data.train$Title, ignore.case=TRUE)
+final.data.test$Manager <- grepl('Senior', final.data.test$Title, ignore.case=TRUE) | grepl('Head', final.data.test$Title,ignore.case=TRUE) | grepl('Manager', final.data.test$Title, ignore.case=TRUE)
+
+# Build the final model
+final.model <- lm(SalaryNormalized ~ Category:ContractTime + TopLocation + TopSource + Manager, final.data.train)
 final.predictions <- predict(final.model, final.data.test)
 final.output <- data.frame(final.data.test$Id, Salary=final.predictions)
-write.csv(final.output, "my_predictions.csv", row.names=FALSE)
+write.csv(final.output, "my_submission.csv", row.names=FALSE)
