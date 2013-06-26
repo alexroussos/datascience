@@ -134,8 +134,8 @@ final.data.train <- data.train # TODO read in larger training file
 
 # Adding level isn't working, cheating by putting it into the training set
 # Why no work: levels(final.data.train$Category) <- c(levels(final.data.train$Category), "Part time Jobs")
-final.data.train[nrow(final.data.train),]$Category <- "Part time Jobs"
-final.data.train[nrow(final.data.train),]$Category <- "Graduate Jobs"
+final.data.train[1,]$Category <- "Part time Jobs"
+final.data.train[2,]$Category <- "Graduate Jobs"
 
 # Top Sources
 final.sources.counts <- summary(final.data.train$SourceName)
@@ -163,4 +163,6 @@ final.data.test$Manager <- grepl('Senior', final.data.test$Title, ignore.case=TR
 final.model <- lm(SalaryNormalized ~ Category:ContractTime + TopLocation + TopSource + Manager, final.data.train)
 final.predictions <- predict(final.model, final.data.test)
 final.output <- data.frame(final.data.test$Id, Salary=final.predictions)
+mae(predict(final.model, final.data.train), final.data.train$SalaryNormalized) # TODO why are some predictions NA?
+summary(final.model) # R2 = 0.034
 write.csv(final.output, "my_submission.csv", row.names=FALSE)
