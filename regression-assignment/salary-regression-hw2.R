@@ -108,13 +108,27 @@ cv.lm(df=data, form.lm = formula(SalaryNormalized ~ Category + ContractTime), m=
 # PART 4: Merge Location_Tree.csv
 ##########################################################################################
 
-read.csv('Location_Tree.csv')
+# Most common value of LocationNormalized is a city, so merge on that.
+# Column 3 of Location_Tree seems to generally be a city.
+# This will drop any rows whose LocationNormalized is not a city and give us the Country, Region and Neighborhood
+location.tree <- read.csv('Location_Tree2.csv', col.names=c("Country","Region","City","Neighborhood"), header=FALSE)
+data.location.tree <- merge(data, location.tree, by.x="LocationNormalized", by.y="City")
 
-# TODO Merge location_tree.csv and note effect on performance
-# 1 - get list of regions from tree
-# 2 - remove rows from data whose LocationNormalized is not in the list of regions
-# 3 - set the Region column 
-# 4 - now have location column at consistent granularity (eg region)
+# Re-split
+train.indices <- sample(1:nrow(data.location.tree), 0.7 * nrow(data.location.tree))
+data.location.tree.train <- data.location.tree[train.indices,]
+data.location.tree.test <- data.location.tree[-train.indices,]
+
+# Let's see if any geographic granularities are useful
+# Country is always "UK" so skip that, and Neighborhood too granular
+# Region is not too useful:
+model <- lm(SalaryNormalized ~ Region, data.location.tree.train)
+mae(predict(model, data.location.tree.test), data.location.tree.test$SalaryNormalized) # 11135
+summary(model) # R2 = 0.047
+# LocationNormalized is just City now
+model <- lm(SalaryNormalized ~ LocationNormalized, data.location.tree.train)
+mae(predict(model, data.location.tree.test), data.location.tree.test$SalaryNormalized) # 10846
+summary(model) # R2 = 0.091
 
 ##########################################################################################
 # PART 5: Build a GLM Model (*)
