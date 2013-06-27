@@ -25,7 +25,9 @@ mae <- function(x,y)
 }
 
 # See what might be interesting to study
-summary(data)
+# summary(data.test)
+# hist(data.test$SalaryNormalized)
+# hist(log(data.test$SalaryNormalized)) # this looks more normal, try modeling it
 
 # Model ContractType (full/parttime) or ContractTime (temp/perm)
 model <- lm(SalaryNormalized ~ ContractType + ContractTime, data.train)
@@ -59,7 +61,7 @@ data.train$TopSource[is.na(data.train$TopSource)] <- "Other"
 data.test$TopSource <- factor(data.test$Source, levels=top.sources)
 data.test$TopSource[is.na(data.test$TopSource)] <- "Other"
 model <- lm(SalaryNormalized ~ TopSource, data.train)
-mae(predict(model, data.test), data.test$SalaryNormalized) # "NA" - TODO why?
+mae(predict(model, data.test), data.test$SalaryNormalized)
 summary(model) # R2 = 0.171
 # Source (website) looks moderately useful
 
@@ -82,12 +84,18 @@ model <- lm(SalaryNormalized ~ Category:ContractTime, data.train)
 mae(predict(model, data.test), data.test$SalaryNormalized) # 10291
 summary(model) # R2 = 0.221
 
-# Look at whether Title contains words like "Senior" or "Manager" or "Head"
-data.train$Manager <- grepl('Senior', data.train$Title, ignore.case=TRUE) | grepl('Head', data.train$Title,ignore.case=TRUE) | grepl('Manager', data.train$Title, ignore.case=TRUE)
-data.test$Manager <- grepl('Senior', data.test$Title, ignore.case=TRUE) | grepl('Head', data.test$Title,ignore.case=TRUE) | grepl('Manager', data.test$Title, ignore.case=TRUE)
+# Look at whether Title contains words like Senior, Manager, Head, Director
+data.train$Manager <- grepl('Senior', data.train$Title, ignore.case=TRUE) | grepl('Head', data.train$Title,ignore.case=TRUE) | grepl('Manager', data.train$Title, ignore.case=TRUE) | grepl('Director', data.train$Title, ignore.case=TRUE)
+data.test$Manager <- grepl('Senior', data.test$Title, ignore.case=TRUE) | grepl('Head', data.test$Title,ignore.case=TRUE) | grepl('Manager', data.test$Title, ignore.case=TRUE) | grepl('Director', data.test$Title, ignore.case=TRUE)
 model <- lm(SalaryNormalized ~ Manager, data.train)
-mae(predict(model, data.test), data.test$SalaryNormalized) # 11128.17
-summary(model) # R2 = 0.057
+mae(predict(model, data.test), data.test$SalaryNormalized) # 10990
+summary(model) # R2 = 0.069
+
+# See if modeling log(salary) is an improvement
+model <- lm(log(SalaryNormalized) ~ ContractType + ContractTime, data.train)
+mae(exp(predict(model, data.test)), data.test$SalaryNormalized) # 10737
+summary(model) # R2 = 0.431
+# This is a huge improvement!
 
 ##########################################################################################
 # PART 3: Try DAAG for cross-validation
@@ -111,14 +119,46 @@ read.csv('Location_Tree.csv')
 ##########################################################################################
 # PART 5: Build a GLM Model (*)
 ##########################################################################################
+library('glmnet')
+
+glm.model <- glmnet(as.matrix(data.train[,c('Manager')]), as.matrix(data.train$SalaryNormalized))
+glm.model.cv <- cv.glmnet(as.matrix(data.train[,c('Manager')]), as.matrix(data.train$SalaryNormalized))
+glm.predict <- predict(glm.model, as.matrix(data.test[,c('Manager')]))
+glm.predict.cv <- predict(glm.model.cv, as.matrix(data.test[,c('Manager')]), s=glm.model.cv$lambda.min)
+mae(glm.predict, data.test$SalaryNormalized) # 11362
+mae(glm.predict.cv, data.test$SalaryNormalized) #11254
+
+# GLM CV improved MAE. Would run with more columns but getting error when including them (must need cleaning up)
+#   Error in elnet(x, is.sparse, ix, jx, y, weights, offset, type.gaussian,  : NA/NaN/Inf in foreign function call (arg 5)
 
 ##########################################################################################
 # PART 6: Add text features (**)
 ##########################################################################################
+library('tm')
+
+# Add a column for descriptions containing 'bonus'
+src <- DataframeSource(data.frame(data$FullDescription))
+c <- Corpus(src)
+dtm<- DocumentTermMatrix(c)
+text.data <- cbind(data, as.matrix(dtm[,'bonus']))
+
+# Re-split data                    
+train.indices <- sample(1:nrow(text.data), 0.7 * nrow(text.data))
+text.data.train <- text.data[train.indices,]
+text.data.test <- text.data[-train.indices,]
+                       
+text.model <- lm(SalaryNormalized ~ bonus, data = text.data)
+mae(predict(text.model, text.data.test), text.data.test$SalaryNormalized) # 11672
+summary(text.model) # R2 = 0.003             
+
+# TODO do something like spam problem but, instead of spam vs non-spam, find words for high-paying vs low-paying 
 
 ##########################################################################################
 # PART 7: Try a larger file (**)
 ##########################################################################################
+# Increasing training file size from 10k to 50k 
+# - increased R2 from 0.315 to 0.354
+# - decreased MAE from 10202 to 10503
 
 ##########################################################################################
 # PART 8: Use vowpal wabbit with largest set (***)
@@ -127,42 +167,41 @@ read.csv('Location_Tree.csv')
 ##########################################################################################
 # FINAL: Process test set and export predictions
 ##########################################################################################
+
 final.data.test <- read.csv("test.csv")
-final.data.train <- data.train # TODO read in larger training file
-
-# TODO adding these columns should be a function so it can be done with same code as above
-
-# Adding level isn't working, cheating by putting it into the training set
-# Why no work: levels(final.data.train$Category) <- c(levels(final.data.train$Category), "Part time Jobs")
-final.data.train[1,]$Category <- "Part time Jobs"
-final.data.train[2,]$Category <- "Graduate Jobs"
+final.data.train <- read.csv("train.csv", header=TRUE) # TODO read in larger training file
 
 # Top Sources
 final.sources.counts <- summary(final.data.train$SourceName)
 final.top.sources <- names(final.sources.counts[order(final.sources.counts, decreasing= TRUE)][1:10])
 final.data.train$TopSource <- factor(final.data.train$Source, levels=final.top.sources)
+levels(final.data.train$TopSource) <- c(levels(final.data.train$TopSource), "Other")
 final.data.train$TopSource[is.na(final.data.train$TopSource)] <- "Other"
 final.data.test$TopSource <- factor(final.data.test$Source, levels=final.top.sources)
+levels(final.data.test$TopSource) <- c(levels(final.data.test$TopSource), "Other")
 final.data.test$TopSource[is.na(final.data.test$TopSource)] <- "Other"
 
 # Top Locations
 final.locations.counts <- summary(final.data.train$LocationNormalized)
 final.top.locations <- names(final.locations.counts[order(final.locations.counts, decreasing= TRUE)][1:10])
 final.data.train$TopLocation <- factor(final.data.train$LocationNormalized, levels=final.top.locations)
+levels(final.data.train$TopLocation) <- c(levels(final.data.train$TopLocation), "(Other")
 final.data.train$TopLocation[is.na(final.data.train$TopLocation)] <- "(Other)"
 final.data.train$TopLocation[final.data.train$TopLocation == "UK"] <- "(Other)"
 final.data.test$TopLocation <- factor(final.data.test$LocationNormalized, levels=final.top.locations)
+levels(final.data.test$TopLocation) <- c(levels(final.data.test$TopLocation), "(Other")
 final.data.test$TopLocation[is.na(final.data.test$TopLocation)] <- "(Other)"
 final.data.test$TopLocation[final.data.test$TopLocation == "UK"] <- "(Other)"
 
-# Title contains words like "Senior" or "Manager" or "Head"
-final.data.train$Manager <- grepl('Senior', final.data.train$Title, ignore.case=TRUE) | grepl('Head', final.data.train$Title,ignore.case=TRUE) | grepl('Manager', final.data.train$Title, ignore.case=TRUE)
-final.data.test$Manager <- grepl('Senior', final.data.test$Title, ignore.case=TRUE) | grepl('Head', final.data.test$Title,ignore.case=TRUE) | grepl('Manager', final.data.test$Title, ignore.case=TRUE)
+# Title contains words like "Senior" or "Manager" or "Head" or "Director"
+final.data.train$Manager <- grepl('Senior', final.data.train$Title, ignore.case=TRUE) | grepl('Head', final.data.train$Title,ignore.case=TRUE) | grepl('Manager', final.data.train$Title, ignore.case=TRUE) | grepl('Director', final.data.train$Title, ignore.case=TRUE)
+final.data.test$Manager <- grepl('Senior', final.data.test$Title, ignore.case=TRUE) | grepl('Head', final.data.test$Title,ignore.case=TRUE) | grepl('Manager', final.data.test$Title, ignore.case=TRUE) | grepl('Director', final.data.test$Title, ignore.case=TRUE)
 
 # Build the final model
-final.model <- lm(SalaryNormalized ~ Category:ContractTime + TopLocation + TopSource + Manager, final.data.train)
+final.model <- lm(log(SalaryNormalized) ~ Category:ContractTime + TopLocation + TopSource + Manager, final.data.train)
+final.model$xlevels$Category <- c(final.model$xlevels$Category, "Part time Jobs")
 final.predictions <- predict(final.model, final.data.test)
 final.output <- data.frame(final.data.test$Id, Salary=final.predictions)
-mae(predict(final.model, final.data.train), final.data.train$SalaryNormalized) # TODO why are some predictions NA?
-summary(final.model) # R2 = 0.034
+mae(exp(predict(final.model, final.data.train)), final.data.train$SalaryNormalized) # 10035
+summary(final.model) # R2 = 0.365
 write.csv(final.output, "my_submission.csv", row.names=FALSE)
