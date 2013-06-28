@@ -183,7 +183,7 @@ summary(text.model) # R2 = 0.003
 ##########################################################################################
 
 final.data.test <- read.csv("test.csv")
-final.data.train <- read.csv("train.csv", header=TRUE) # TODO read in larger training file
+final.data.train <- read.csv("train_50k.csv", header=TRUE) # TODO read in larger training file
 
 # Top Sources
 final.sources.counts <- summary(final.data.train$SourceName)
@@ -214,8 +214,8 @@ final.data.test$Manager <- grepl('Senior', final.data.test$Title, ignore.case=TR
 # Build the final model
 final.model <- lm(log(SalaryNormalized) ~ Category:ContractTime + TopLocation + TopSource + Manager, final.data.train)
 final.model$xlevels$Category <- c(final.model$xlevels$Category, "Part time Jobs")
-final.predictions <- predict(final.model, final.data.test)
+final.predictions <- exp(predict(final.model, final.data.test))
 final.output <- data.frame(final.data.test$Id, Salary=final.predictions)
-mae(exp(predict(final.model, final.data.train)), final.data.train$SalaryNormalized) # 10035
-summary(final.model) # R2 = 0.365
+mae(exp(predict(final.model, final.data.train)), final.data.train$SalaryNormalized) # 10035 (10k), 11372 (50k)
+summary(final.model) # R2 = 0.365 (10k), 0.428 (50k)
 write.csv(final.output, "my_submission.csv", row.names=FALSE)
